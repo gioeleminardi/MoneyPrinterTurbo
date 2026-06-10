@@ -46,9 +46,8 @@
 - [x] 支持 **多种语音** 合成，可 **实时试听** 效果
 - [x] 支持 **字幕生成**，可以调整 `字体`、`位置`、`颜色`、`大小`，同时支持`字幕描边`设置
 - [x] 支持 **背景音乐**，随机或者指定音乐文件，可设置`背景音乐音量`
-- [x] 视频素材来源 **高清**，而且 **无版权**，也可以使用自己的 **本地素材**
-- [x] 支持多种素材源:**Pexels**、**Pixabay**、**Coverr**(免费高清/4K 素材库,使用须遵守 [Coverr 许可条款](https://coverr.co/license),以 16:9 横屏为主;在 [coverr.co/developers](https://coverr.co/developers?ctx=header_navigation) 注册即可,Demo 套餐 50 次/小时)
-- [x] 支持 **OpenAI**、**AIHubMix**、**Moonshot**、**Azure**、**gpt4free**、**one-api**、**通义千问**、**Google Gemini**、**Ollama**、**DeepSeek**、**MiniMax**、 **文心一言**, **Pollinations**、**ModelScope** 等多种模型接入
+- [x] 使用 OpenRouter 的 `x-ai/grok-imagine-video` 生成连贯视频素材
+- [x] 使用 AIHubMix 生成提示词、文案、关键词和元数据
 
 ## 视频演示 📺
 
@@ -144,9 +143,7 @@ git clone https://github.com/harry0703/MoneyPrinterTurbo.git
 #### ② 修改配置文件（可选，建议启动后也可以在 WebUI 里面配置）
 
 - 将 `config.example.toml` 文件复制一份，命名为 `config.toml`
-- 按照 `config.toml` 文件中的说明，配置好 `pexels_api_keys` 和 `llm_provider`，并根据 llm_provider 对应的服务商，配置相关的
-  API Key
-- 如果希望使用推荐的大模型平台，也可以将 `llm_provider` 设置为 `aihubmix`，并填写对应的 API Key。
+- 配置 `aihubmix_api_key` 用于文本生成，并配置 `openrouter_api_key` 用于视频生成。
 
 ### Docker部署 🐳
 

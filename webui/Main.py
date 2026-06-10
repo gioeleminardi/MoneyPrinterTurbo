@@ -17,7 +17,6 @@ if root_dir not in sys.path:
 
 from app.config import config
 from app.models.schema import (
-    MaterialInfo,
     VideoAspect,
     VideoConcatMode,
     VideoParams,
@@ -73,10 +72,6 @@ if "use_custom_system_prompt" not in st.session_state:
     st.session_state["use_custom_system_prompt"] = False
 if "ui_language" not in st.session_state:
     st.session_state["ui_language"] = config.ui.get("language", system_locale)
-if "local_video_materials" not in st.session_state:
-    # 记住用户最近一次已经落盘的本地素材，避免仅修改文案后二次生成时丢失素材列表。
-    st.session_state["local_video_materials"] = []
-
 # 加载语言文件
 locales = utils.load_locales(i18n_dir)
 
@@ -282,32 +277,12 @@ if not config.app.get("hide_config", False):
             aihubmix_label = f"AIHubMix ({tr('Recommended')})"
             if config.ui.get("language") == "zh":
                 aihubmix_label = "AIHubMix（推荐）"
-            llm_provider_options = [
-                ("OpenAI", "openai"),
-                (aihubmix_label, "aihubmix"),
-                ("Moonshot", "moonshot"),
-                ("Azure", "azure"),
-                ("Qwen", "qwen"),
-                ("DeepSeek", "deepseek"),
-                ("ModelScope", "modelscope"),
-                ("Gemini", "gemini"),
-                ("Grok", "grok"),
-                ("Groq", "groq"),
-                ("Ollama", "ollama"),
-                ("G4f", "g4f"),
-                ("OneAPI", "oneapi"),
-                ("Cloudflare", "cloudflare"),
-                ("ERNIE", "ernie"),
-                ("MiniMax", "minimax"),
-                ("MiMo", "mimo"),
-                ("Pollinations", "pollinations"),
-                ("LiteLLM", "litellm"),
-            ]
+            llm_provider_options = [(aihubmix_label, "aihubmix")]
             llm_provider_labels = [label for label, _ in llm_provider_options]
             llm_provider_values = {
                 label: provider_id for label, provider_id in llm_provider_options
             }
-            saved_llm_provider = config.app.get("llm_provider", "openai").lower()
+            saved_llm_provider = "aihubmix"
             saved_llm_provider_index = 0
             for i, (_, provider_id) in enumerate(llm_provider_options):
                 if provider_id == saved_llm_provider:
@@ -629,47 +604,20 @@ if not config.app.get("hide_config", False):
 
         # 右侧面板 - API 密钥设置
         with right_config_panel:
-
-            def get_keys_from_config(cfg_key):
-                api_keys = config.app.get(cfg_key, [])
-                if isinstance(api_keys, str):
-                    api_keys = [api_keys]
-                api_key = ", ".join(api_keys)
-                return api_key
-
-            def save_keys_to_config(cfg_key, value):
-                value = value.replace(" ", "")
-                if value:
-                    config.app[cfg_key] = value.split(",")
-
             st.write(tr("Video Source Settings"))
 
-            pexels_api_key = get_keys_from_config("pexels_api_keys")
-            pexels_api_key = st.text_input(
-                tr("Pexels API Key"), value=pexels_api_key, type="password"
+            config.app["openrouter_api_key"] = st.text_input(
+                "OpenRouter API Key",
+                value=config.app.get("openrouter_api_key", ""),
+                type="password",
             )
-            save_keys_to_config("pexels_api_keys", pexels_api_key)
 
-            pixabay_api_key = get_keys_from_config("pixabay_api_keys")
-            pixabay_api_key = st.text_input(
-                tr("Pixabay API Key"), value=pixabay_api_key, type="password"
-            )
-            save_keys_to_config("pixabay_api_keys", pixabay_api_key)
-
-            coverr_api_key = get_keys_from_config("coverr_api_keys")
-            coverr_api_key = st.text_input(
-                tr("Coverr API Key"), value=coverr_api_key, type="password"
-            )
-            save_keys_to_config("coverr_api_keys", coverr_api_key)
-
-llm_provider = config.app.get("llm_provider", "").lower()
 panel = st.columns(3)
 left_panel = panel[0]
 middle_panel = panel[1]
 right_panel = panel[2]
 
 params = VideoParams(video_subject="")
-uploaded_files = []
 uploaded_audio_file = None
 
 with left_panel:
@@ -776,18 +724,9 @@ with middle_panel:
             (tr("Sequential"), "sequential"),
             (tr("Random"), "random"),
         ]
-        video_sources = [
-            (tr("Pexels"), "pexels"),
-            (tr("Pixabay"), "pixabay"),
-            (tr("Coverr"), "coverr"),
-            (tr("AI generated video"), "ai"),
-            (tr("Local file"), "local"),
-            (tr("TikTok"), "douyin"),
-            (tr("Bilibili"), "bilibili"),
-            (tr("Xiaohongshu"), "xiaohongshu"),
-        ]
+        video_sources = [("OpenRouter · x-ai/grok-imagine-video", "openrouter")]
 
-        saved_video_source_name = config.app.get("video_source", "pexels")
+        saved_video_source_name = "openrouter"
         saved_video_source_index = [v[1] for v in video_sources].index(
             saved_video_source_name
         )
@@ -801,72 +740,22 @@ with middle_panel:
         params.video_source = video_sources[selected_index][1]
         config.app["video_source"] = params.video_source
 
-        if params.video_source == "ai":
-            with st.expander(tr("AI Media Settings"), expanded=True):
-                config.app["ai_media_api_key"] = st.text_input(
-                    tr("AI Media API Key"),
-                    value=config.app.get("ai_media_api_key", ""),
-                    type="password",
-                    help=tr("AI Media API Key Help"),
-                )
-                config.app["ai_media_base_url"] = st.text_input(
-                    tr("AI Media Base URL"),
-                    value=config.app.get("ai_media_base_url", ""),
-                    help=tr("AI Media Base URL Help"),
-                )
-                config.app["ai_image_model_name"] = st.text_input(
-                    tr("AI Image Model Name"),
-                    value=config.app.get("ai_image_model_name", "gpt-image-1"),
-                )
-                config.app["ai_image_size"] = st.text_input(
-                    tr("AI Image Size"),
-                    value=config.app.get("ai_image_size", ""),
-                    help=tr("AI Image Size Help"),
-                )
-                config.app["ai_image_quality"] = st.text_input(
-                    tr("AI Image Quality"),
-                    value=config.app.get("ai_image_quality", "auto"),
-                )
-                ai_video_model_name = st.text_input(
-                    tr("AI Video Model Name"),
-                    value=config.app.get("ai_video_model_name", "sora-2"),
-                )
-                config.app["ai_video_model_name"] = ai_video_model_name
-                include_video_optional_params = not ai_video_model_name.lower().startswith(
-                    "veo-"
-                )
-                config.app["ai_video_include_seconds"] = st.checkbox(
-                    tr("AI Video Include Seconds"),
-                    value=config.app.get(
-                        "ai_video_include_seconds", include_video_optional_params
-                    ),
-                    help=tr("AI Video Optional Parameters Help"),
-                )
-                config.app["ai_video_include_size"] = st.checkbox(
-                    tr("AI Video Include Size"),
-                    value=config.app.get(
-                        "ai_video_include_size", include_video_optional_params
-                    ),
-                    help=tr("AI Video Optional Parameters Help"),
-                )
-                config.app["ai_video_include_input_reference"] = st.checkbox(
-                    tr("AI Video Include Input Reference"),
-                    value=config.app.get("ai_video_include_input_reference", True),
-                    help=tr("AI Video Input Reference Help"),
-                )
-
-        if params.video_source == "local":
-            # Streamlit 的文件类型校验对扩展名大小写敏感，这里同时放行大小写两种形式。
-            local_file_types = ["mp4", "mov", "avi", "flv", "mkv", "jpg", "jpeg", "png"]
-            uploaded_files = st.file_uploader(
-                tr("Upload Local Files"),
-                type=local_file_types + [file_type.upper() for file_type in local_file_types],
-                accept_multiple_files=True,
+        with st.expander("OpenRouter Video Settings", expanded=True):
+            config.app["openrouter_api_key"] = st.text_input(
+                "OpenRouter API Key",
+                value=config.app.get("openrouter_api_key", ""),
+                type="password",
+                key="openrouter_video_api_key",
+            )
+            config.app["openrouter_video_size"] = st.text_input(
+                "OpenRouter Video Size",
+                value=config.app.get("openrouter_video_size", ""),
+                help="Leave empty to derive the size from the selected video ratio.",
             )
 
         selected_index = st.selectbox(
             tr("Video Concat Mode"),
-            index=0 if params.video_source == "ai" else 1,
+            index=0,
             options=range(
                 len(video_concat_modes)
             ),  # Use the index as the internal option value
@@ -901,13 +790,7 @@ with middle_panel:
             (tr("Portrait"), VideoAspect.portrait.value),
             (tr("Landscape"), VideoAspect.landscape.value),
         ]
-        # Coverr 库 99% 是 16:9 横屏,默认竖屏会让画面被大量黑边包围。
-        # 用 source-specific widget key 让每个 source 各自记忆 aspect 选择:
-        #   - 首次切到 coverr → 默认 Landscape(index=1)
-        #   - 其他 source 沿用 Portrait(index=0)
-        #   - 用户在某 source 下手动改过 aspect,session_state 会记住,
-        #     下次回到同一 source 时尊重用户选择,不会再被强制覆盖。
-        default_aspect_index = 1 if params.video_source == "coverr" else 0
+        default_aspect_index = 0
         selected_index = st.selectbox(
             tr("Video Ratio"),
             options=range(
@@ -1350,110 +1233,6 @@ with right_panel:
             config.ui["rounded_subtitle_background"] = (
                 params.rounded_subtitle_background
             )
-    with st.expander(tr("Click to show API Key management"), expanded=False):
-        st.subheader(tr("Manage Pexels, Pixabay and Coverr API Keys"))
-
-        col1, col2, col3 = st.tabs([
-            tr("Pexels API Keys"),
-            tr("Pixabay API Keys"),
-            tr("Coverr API Keys"),
-        ])
-
-        with col1:
-            st.subheader(tr("Pexels API Keys"))
-            if config.app["pexels_api_keys"]:
-                st.write(tr("Current Keys:"))
-                for key in config.app["pexels_api_keys"]:
-                    st.code(key)
-            else:
-                st.info(tr("No Pexels API Keys currently"))
-
-            new_key = st.text_input(tr("Add Pexels API Key"), key="pexels_new_key")
-            if st.button(tr("Add Pexels API Key")):
-                if new_key and new_key not in config.app["pexels_api_keys"]:
-                    config.app["pexels_api_keys"].append(new_key)
-                    config.save_config()
-                    st.success(tr("Pexels API Key added successfully"))
-                elif new_key in config.app["pexels_api_keys"]:
-                    st.warning(tr("This API Key already exists"))
-                else:
-                    st.error(tr("Please enter a valid API Key"))
-
-            if config.app["pexels_api_keys"]:
-                delete_key = st.selectbox(
-                    tr("Select Pexels API Key to delete"), config.app["pexels_api_keys"], key="pexels_delete_key"
-                )
-                if st.button(tr("Delete Selected Pexels API Key")):
-                    config.app["pexels_api_keys"].remove(delete_key)
-                    config.save_config()
-                    st.success(tr("Pexels API Key deleted successfully"))
-
-        with col2:
-            st.subheader(tr("Pixabay API Keys"))
-
-            if config.app["pixabay_api_keys"]:
-                st.write(tr("Current Keys:"))
-                for key in config.app["pixabay_api_keys"]:
-                    st.code(key)
-            else:
-                st.info(tr("No Pixabay API Keys currently"))
-
-            new_key = st.text_input(tr("Add Pixabay API Key"), key="pixabay_new_key")
-            if st.button(tr("Add Pixabay API Key")):
-                if new_key and new_key not in config.app["pixabay_api_keys"]:
-                    config.app["pixabay_api_keys"].append(new_key)
-                    config.save_config()
-                    st.success(tr("Pixabay API Key added successfully"))
-                elif new_key in config.app["pixabay_api_keys"]:
-                    st.warning(tr("This API Key already exists"))
-                else:
-                    st.error(tr("Please enter a valid API Key"))
-
-            if config.app["pixabay_api_keys"]:
-                delete_key = st.selectbox(
-                    tr("Select Pixabay API Key to delete"), config.app["pixabay_api_keys"], key="pixabay_delete_key"
-                )
-                if st.button(tr("Delete Selected Pixabay API Key")):
-                    config.app["pixabay_api_keys"].remove(delete_key)
-                    config.save_config()
-                    st.success(tr("Pixabay API Key deleted successfully"))
-
-        with col3:
-            st.subheader(tr("Coverr API Keys"))
-
-            # 与 pexels/pixabay 不同,coverr_api_keys 是 PR 新增配置项,
-            # 老用户的 config.toml 不一定包含,这里先兜底初始化为空列表,
-            # 防止下面 .append / 索引访问触发 KeyError。
-            if "coverr_api_keys" not in config.app or config.app["coverr_api_keys"] is None:
-                config.app["coverr_api_keys"] = []
-
-            if config.app["coverr_api_keys"]:
-                st.write(tr("Current Keys:"))
-                for key in config.app["coverr_api_keys"]:
-                    st.code(key)
-            else:
-                st.info(tr("No Coverr API Keys currently"))
-
-            new_key = st.text_input(tr("Add Coverr API Key"), key="coverr_new_key")
-            if st.button(tr("Add Coverr API Key")):
-                if new_key and new_key not in config.app["coverr_api_keys"]:
-                    config.app["coverr_api_keys"].append(new_key)
-                    config.save_config()
-                    st.success(tr("Coverr API Key added successfully"))
-                elif new_key in config.app["coverr_api_keys"]:
-                    st.warning(tr("This API Key already exists"))
-                else:
-                    st.error(tr("Please enter a valid API Key"))
-
-            if config.app["coverr_api_keys"]:
-                delete_key = st.selectbox(
-                    tr("Select Coverr API Key to delete"), config.app["coverr_api_keys"], key="coverr_delete_key"
-                )
-                if st.button(tr("Delete Selected Coverr API Key")):
-                    config.app["coverr_api_keys"].remove(delete_key)
-                    config.save_config()
-                    st.success(tr("Coverr API Key deleted successfully"))
-
 start_button = st.button(tr("Generate Video"), use_container_width=True, type="primary")
 if start_button:
     config.save_config()
@@ -1463,32 +1242,13 @@ if start_button:
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source not in ["pexels", "pixabay", "coverr", "ai", "local"]:
+    if params.video_source != "openrouter":
         st.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source == "pexels" and not config.app.get("pexels_api_keys", ""):
-        st.error(tr("Please Enter the Pexels API Key"))
-        scroll_to_bottom()
-        st.stop()
-
-    if params.video_source == "pixabay" and not config.app.get("pixabay_api_keys", ""):
-        st.error(tr("Please Enter the Pixabay API Key"))
-        scroll_to_bottom()
-        st.stop()
-
-    if params.video_source == "coverr" and not config.app.get("coverr_api_keys", ""):
-        st.error(tr("Please Enter the Coverr API Key"))
-        scroll_to_bottom()
-        st.stop()
-
-    if params.video_source == "ai" and not (
-        config.app.get("ai_media_api_key", "")
-        or config.app.get("openai_api_key", "")
-        or config.app.get("aihubmix_api_key", "")
-    ):
-        st.error(tr("Please Enter the AI Media API Key"))
+    if not config.app.get("openrouter_api_key", ""):
+        st.error("Please Enter the OpenRouter API Key")
         scroll_to_bottom()
         st.stop()
 
@@ -1502,39 +1262,6 @@ if start_button:
         with open(custom_audio_path, "wb") as f:
             f.write(uploaded_audio_file.getbuffer())
         params.custom_audio_file = custom_audio_path
-
-    if uploaded_files:
-        local_videos_dir = utils.storage_dir("local_videos", create=True)
-        # 每次重新上传时都以本次选择的素材为准，避免旧素材不断重复追加。
-        params.video_materials = []
-        persisted_local_materials = []
-        for file in uploaded_files:
-            file_path = os.path.join(local_videos_dir, f"{file.file_id}_{file.name}")
-            with open(file_path, "wb") as f:
-                f.write(file.getbuffer())
-                m = MaterialInfo()
-                m.provider = "local"
-                m.url = file_path
-                params.video_materials.append(m)
-                persisted_local_materials.append(
-                    {
-                        "provider": m.provider,
-                        "url": m.url,
-                        "duration": m.duration,
-                    }
-                )
-        # 将已上传并保存到本地的视频素材写入会话，供后续只改文案时直接复用。
-        st.session_state["local_video_materials"] = persisted_local_materials
-    elif params.video_source == "local" and st.session_state["local_video_materials"]:
-        # 当用户没有重新上传文件时，复用最近一次已经保存到磁盘的本地素材列表。
-        params.video_materials = []
-        for material in st.session_state["local_video_materials"]:
-            m = MaterialInfo()
-            m.provider = material.get("provider", "local")
-            m.url = material.get("url", "")
-            m.duration = material.get("duration", 0)
-            if m.url:
-                params.video_materials.append(m)
 
     log_container = st.empty()
     log_records = []

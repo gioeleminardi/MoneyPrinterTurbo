@@ -1,5 +1,5 @@
 [app]
-video_source = "pexels" # "pexels", "pixabay", "coverr", "ai", or "local"
+video_source = "openrouter"
 
 # 是否隐藏配置面板
 hide_config = false
@@ -11,133 +11,21 @@ hide_config = false
 edge_tts_timeout = 30
 
 # 是否校验外部 API 和素材下载的 TLS 证书。
-# 默认必须开启，避免 Pexels/Pixabay API key 和下载素材被中间人攻击篡改。
+# 默认必须开启，避免外部 API 响应和生成视频被中间人攻击篡改。
 # 只有在企业代理或自签证书环境明确需要时，才临时改为 false。
 tls_verify = true
 
-# Pexels API Key
-# Register at https://www.pexels.com/api/ to get your API key.
-# You can use multiple keys to avoid rate limits.
-# For example: pexels_api_keys = ["123adsf4567adf89","abd1321cd13efgfdfhi"]
-# 特别注意格式，Key 用英文双引号括起来，多个Key用逗号隔开
-pexels_api_keys = []
+########## OpenRouter Grok video generation
+openrouter_api_key = ""
+openrouter_videos_url = "https://openrouter.ai/api/v1/videos"
+openrouter_video_size = ""
+openrouter_max_scenes = 20
+openrouter_request_timeout = 600
+openrouter_poll_interval = 5
+openrouter_poll_timeout = 1800
 
-# Pixabay API Key
-# Register at https://pixabay.com/api/docs/ to get your API key.
-# You can use multiple keys to avoid rate limits.
-# For example: pixabay_api_keys = ["123adsf4567adf89","abd1321cd13efgfdfhi"]
-# 特别注意格式，Key 用英文双引号括起来，多个Key用逗号隔开
-pixabay_api_keys = []
-
-# Coverr API Key
-# Register at https://coverr.co/developers?ctx=header_navigation to get your API key instantly.
-# Free tier (Demo) is limited to 50 requests/hour — sufficient for a few
-# video tasks per hour. Upgrade to Pro/Ultimate subscription for 2000/hour.
-# Coverr provides free HD/4K stock videos (subject to Coverr license terms,
-# see https://coverr.co/license), mostly 16:9 landscape; if
-# you generate 9:16 short-form videos, prefer Pexels/Pixabay as primary
-# and use Coverr to widen the catalog for landscape/cinematic content.
-# You can use multiple keys to avoid rate limits.
-# For example: coverr_api_keys = ["123adsf4567adf89","abd1321cd13efgfdfhi"]
-# 特别注意格式，Key 用英文双引号括起来，多个Key用逗号隔开
-coverr_api_keys = []
-
-########## AI-generated video materials
-# The "ai" video source creates a coherent storyboard from the narration, generates
-# one image per scene, then animates each image. Generated MP4 clips enter the same
-# ffmpeg/MoviePy composition flow used by downloaded stock videos.
-#
-# Defaults follow the OpenAI-style media API contract:
-#   POST /images/generations
-#   POST /videos
-#   GET  /videos/{video_id}
-#   GET  /videos/{video_id}/content
-# Compatible providers can override the base URL and model names. Image and video
-# generation use the OpenAI SDK's images and videos APIs.
-# ai_media_api_key and ai_media_base_url fall back to the configured OpenAI or
-# AiHubMix credentials. For AiHubMix image generation, use for example:
-# ai_image_model_name = "gpt-image-2-free"
-# ai_image_size = "auto"
-# ai_image_quality = "auto"
-ai_media_api_key = ""
-ai_media_base_url = ""
-ai_image_model_name = "gpt-image-1"
-# Set ai_image_size = "auto" for providers such as AiHubMix that support it.
-# Leave it empty to use aspect-specific defaults: 1024x1536 for portrait,
-# 1536x1024 for landscape, and 1024x1024 for square.
-ai_image_size = ""
-# Set to an empty string to omit quality for providers that do not support it.
-ai_image_quality = "auto"
-ai_video_model_name = "sora-2"
-# Some video models do not accept seconds or size. For AiHubMix Veo, use:
-# ai_video_model_name = "veo-3.1-fast-generate-preview"
-# ai_video_include_seconds = false
-# ai_video_include_size = false
-# Keep input_reference enabled for image-to-video. Set it to false to skip image
-# generation and send both the scene image prompt and motion prompt directly to
-# the video model.
-# veo-* models always omit seconds/size because AiHubMix's Veo-compatible API
-# selects a valid duration/resolution combination itself. Other models include
-# them by default; uncomment either value to override those models.
-# ai_video_include_seconds = true
-# ai_video_include_size = true
-# If a provider rejects a duration/resolution combination, generation retries
-# once without seconds and size so the model can use its compatible defaults.
-ai_video_include_input_reference = true
-# Native OpenAI video generation currently accepts 4, 8, or 12 seconds. The
-# service selects the nearest duration at or above the requested clip duration;
-# the existing composition flow trims clips to the user's selected duration.
-ai_video_supported_durations = [4, 8, 12]
-ai_media_max_scenes = 20
-ai_media_request_timeout = 600
-ai_video_poll_interval = 10
-ai_video_poll_timeout = 1800
-
-# 支持的提供商 (Supported providers):
-#   openai
-#   aihubmix   (OpenAI-compatible AI model gateway)
-#   moonshot    (月之暗面)
-#   azure
-#   qwen        (通义千问)
-#   deepseek
-#   gemini
-#   ollama
-#   g4f        (disabled by default; set enable_g4f=true only after accepting its risks)
-#   oneapi
-#   cloudflare
-#   minimax
-#   mimo       (Xiaomi MiMo)
-#   ernie       (文心一言)
-#   modelscope  (魔搭社区)
-#   litellm     (100+ providers via LiteLLM gateway)
-llm_provider = "openai"
-
-########## Pollinations AI Settings
-# Visit https://pollinations.ai/ to learn more
-# API Key is optional - leave empty for public access
-pollinations_api_key = ""
-# Default base URL for Pollinations API
-pollinations_base_url = "https://pollinations.ai/api/v1"
-# Default model for text generation
-pollinations_model_name = "openai-fast"
-
-########## Ollama Settings
-# No need to set it unless you want to use your own proxy
-ollama_base_url = ""
-# Check your available models at https://ollama.com/library
-ollama_model_name = ""
-
-########## OpenAI API Key
-# Get your API key at https://platform.openai.com/api-keys
-# 也可以填写兼容 OpenAI Chat Completions 协议的供应商密钥，
-# 例如 OpenRouter 这类提供自定义 base_url 的平台。
-openai_api_key = ""
-# No need to set it unless you want to use your own proxy
-# 如果使用兼容 OpenAI 接口的平台，请在这里填写对应的 base_url。
-openai_base_url = ""
-# Check your available models at https://platform.openai.com/account/limits
-# 如果使用兼容供应商，请填写该平台要求的模型 ID。
-openai_model_name = "gpt-4o-mini"
+# All prompt, script, keyword, and metadata generation uses AIHubMix.
+llm_provider = "aihubmix"
 
 ########## AIHubMix API Key
 # AIHubMix is OpenAI-compatible and can use one API key to access multiple models.
@@ -145,113 +33,6 @@ openai_model_name = "gpt-4o-mini"
 aihubmix_api_key = ""
 aihubmix_base_url = "https://aihubmix.com/v1"
 aihubmix_model_name = "gpt-5.4-mini"
-
-########## Moonshot API Key
-# Visit https://platform.moonshot.cn/console/api-keys to get your API key.
-moonshot_api_key = ""
-moonshot_base_url = "https://api.moonshot.cn/v1"
-moonshot_model_name = "moonshot-v1-8k"
-
-########## OneAPI API Key
-# Visit https://github.com/songquanpeng/one-api to get your API key
-oneapi_api_key = ""
-oneapi_base_url = ""
-oneapi_model_name = ""
-
-########## G4F
-# g4f relies on reverse-engineered third-party endpoints and is not recommended
-# for production. Prefer official APIs, OpenAI-compatible providers, LiteLLM,
-# Ollama, or local inference.
-# If you still need it, install the optional dependency with:
-#   uv sync --extra g4f
-enable_g4f = false
-# Visit https://github.com/xtekky/gpt4free to get more details
-# Supported model list: https://github.com/xtekky/gpt4free/blob/main/g4f/models.py
-g4f_model_name = "gpt-3.5-turbo"
-
-########## Azure API Key
-# Visit https://learn.microsoft.com/zh-cn/azure/ai-services/openai/ to get more details
-# API documentation: https://learn.microsoft.com/zh-cn/azure/ai-services/openai/reference
-azure_api_key = ""
-azure_base_url = ""
-azure_model_name = "gpt-35-turbo"        # replace with your model deployment name
-azure_api_version = "2024-02-15-preview"
-
-########## Gemini API Key
-gemini_api_key = ""
-gemini_model_name = "gemini-2.5-flash"
-
-########## Grok API Key
-grok_api_key = ""
-grok_model_name = "grok-4.3"
-grok_base_url = "https://api.x.ai/v1"
-
-########## Groq API Key
-# Visit https://console.groq.com/keys to get your api keys
-# API documentation: https://console.groq.com/docs/api-reference
-# Available models: https://console.groq.com/docs/api-reference#models-list
-groq_api_key = ""
-groq_model_name = "llama-3.3-70b-versatile"
-groq_base_url = "https://api.groq.com/openai/v1"
-
-########## Qwen API Key
-# Visit https://dashscope.console.aliyun.com/apiKey to get your API key
-# Visit below links to get more details
-# https://tongyi.aliyun.com/qianwen/
-# https://help.aliyun.com/zh/dashscope/developer-reference/model-introduction
-qwen_api_key = ""
-qwen_model_name = "qwen-max"
-
-
-########## MiniMax API Key
-# Visit https://platform.minimax.io or https://platform.minimaxi.com to get your API key
-# MiniMax API is OpenAI-compatible
-# Available models: MiniMax-M3 (default), MiniMax-M2.7, MiniMax-M2.7-highspeed
-# If your API key returns 401 on api.minimax.io, try the China endpoint: https://api.minimaxi.com/v1
-minimax_api_key = ""
-minimax_base_url = "https://api.minimax.io/v1"
-minimax_model_name = "MiniMax-M3"
-
-########## Xiaomi MiMo API Key
-# Xiaomi MiMo API is OpenAI-compatible.
-# Visit https://platform.xiaomimimo.com/docs/zh-CN/quick-start/first-api-call to get more details.
-mimo_api_key = ""
-mimo_base_url = "https://api.xiaomimimo.com/v1"
-mimo_model_name = "mimo-v2.5-pro"
-# Xiaomi MiMo TTS uses the same API key and base_url as MiMo LLM.
-mimo_tts_model_name = "mimo-v2.5-tts"
-# Optional natural language style prompt for MiMo TTS.
-mimo_tts_style_prompt = "请用自然、清晰、适合短视频旁白的语气朗读。"
-
-########## DeepSeek API Key
-# Visit https://platform.deepseek.com/api_keys to get your API key
-deepseek_api_key = ""
-deepseek_base_url = "https://api.deepseek.com"
-deepseek_model_name = "deepseek-chat"
-
-
-########## ModelScope API Key
-# Visit https://modelscope.cn/docs/model-service/API-Inference/intro to get your API key
-# And note that you need to bind your Alibaba Cloud account before using the API.
-modelscope_api_key = ""
-modelscope_base_url = "https://api-inference.modelscope.cn/v1/"
-modelscope_model_name = "Qwen/Qwen3-32B"
-
-########## LiteLLM (AI Gateway — 100+ providers)
-# LiteLLM routes to any LLM provider via a unified interface.
-# Use this for providers not directly supported above: Anthropic (native API),
-# AWS Bedrock, Google Vertex AI, Cohere, Mistral, Together AI, etc.
-# Visit https://docs.litellm.ai/docs/providers for the full list.
-#
-# LiteLLM reads provider API keys from environment variables automatically:
-#   OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, AWS_ACCESS_KEY_ID, etc.
-# Set the appropriate env var for your chosen provider before running.
-#
-# Model name in LiteLLM format: "provider/model-name"
-# Examples: "openai/gpt-4o", "anthropic/claude-sonnet-4-20250514",
-#           "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0",
-#           "gemini/gemini-2.5-flash", "ollama/llama3"
-litellm_model_name = "openai/gpt-4o-mini"
 
 # Subtitle Provider, "edge" or "whisper"
 # If empty, the subtitle will not be generated

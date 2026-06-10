@@ -1,6 +1,6 @@
 import warnings
 from enum import Enum
-from typing import Any, List, Optional, Union
+from typing import Any, List, Literal, Optional, Union
 
 import pydantic
 from pydantic import BaseModel, Field
@@ -50,7 +50,7 @@ class _Config:
 
 @pydantic.dataclasses.dataclass(config=_Config)
 class MaterialInfo:
-    provider: str = "pexels"
+    provider: str = "local"
     url: str = ""
     duration: int = 0
 
@@ -79,7 +79,7 @@ class VideoParams(BaseModel):
     video_clip_duration: Optional[int] = 5
     video_count: Optional[int] = 1
 
-    video_source: Optional[str] = "pexels"
+    video_source: Literal["openrouter"] = "openrouter"
     video_materials: Optional[List[MaterialInfo]] = (
         None  # Materials used to generate the video
     )
