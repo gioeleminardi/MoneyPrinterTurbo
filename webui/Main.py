@@ -818,6 +818,15 @@ with middle_panel:
                     tr("AI Image Model Name"),
                     value=config.app.get("ai_image_model_name", "gpt-image-1"),
                 )
+                config.app["ai_image_size"] = st.text_input(
+                    tr("AI Image Size"),
+                    value=config.app.get("ai_image_size", ""),
+                    help=tr("AI Image Size Help"),
+                )
+                config.app["ai_image_quality"] = st.text_input(
+                    tr("AI Image Quality"),
+                    value=config.app.get("ai_image_quality", "auto"),
+                )
                 config.app["ai_video_model_name"] = st.text_input(
                     tr("AI Video Model Name"),
                     value=config.app.get("ai_video_model_name", "sora-2"),
@@ -1452,7 +1461,9 @@ if start_button:
         st.stop()
 
     if params.video_source == "ai" and not (
-        config.app.get("ai_media_api_key", "") or config.app.get("openai_api_key", "")
+        config.app.get("ai_media_api_key", "")
+        or config.app.get("openai_api_key", "")
+        or config.app.get("aihubmix_api_key", "")
     ):
         st.error(tr("Please Enter the AI Media API Key"))
         scroll_to_bottom()

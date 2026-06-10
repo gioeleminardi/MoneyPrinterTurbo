@@ -22,21 +22,41 @@ def _api_setting(name: str, fallback: str = "") -> str:
     return str(value).strip() if value is not None else ""
 
 
+def _fallback_media_provider() -> str:
+    llm_provider = _api_setting("llm_provider").lower()
+    if llm_provider == "aihubmix" and _api_setting("aihubmix_api_key"):
+        return "aihubmix"
+    if llm_provider == "openai" and _api_setting("openai_api_key"):
+        return "openai"
+    if _api_setting("openai_api_key"):
+        return "openai"
+    if _api_setting("aihubmix_api_key"):
+        return "aihubmix"
+    return "openai"
+
+
 def _api_key() -> str:
-    api_key = _api_setting("ai_media_api_key") or _api_setting("openai_api_key")
+    api_key = _api_setting("ai_media_api_key")
+    if not api_key:
+        api_key = _api_setting(f"{_fallback_media_provider()}_api_key")
     if not api_key:
         raise ValueError(
-            "ai_media_api_key is not set; configure it or openai_api_key in config.toml"
+            "ai_media_api_key is not set; configure it or an OpenAI/AiHubMix API key"
         )
     return api_key
 
 
 def _base_url() -> str:
-    return (
-        _api_setting("ai_media_base_url")
-        or _api_setting("openai_base_url")
-        or "https://api.openai.com/v1"
-    ).rstrip("/")
+    base_url = _api_setting("ai_media_base_url")
+    if not base_url:
+        provider = _fallback_media_provider()
+        default = (
+            "https://aihubmix.com/v1"
+            if provider == "aihubmix"
+            else "https://api.openai.com/v1"
+        )
+        base_url = _api_setting(f"{provider}_base_url", default) or default
+    return base_url.rstrip("/")
 
 
 def _endpoint(path_setting: str, default_path: str, **values) -> str:
@@ -119,6 +139,10 @@ Complete voiceover:
 
 
 def _image_size(video_aspect: VideoAspect) -> str:
+    configured_size = _api_setting("ai_image_size")
+    if configured_size:
+        return configured_size
+
     aspect = VideoAspect(video_aspect)
     if aspect == VideoAspect.landscape:
         return _api_setting("ai_image_size_landscape", "1536x1024")
@@ -134,6 +158,9 @@ def generate_image(prompt: str, output_path: str, video_aspect: VideoAspect) -> 
         "n": 1,
         "size": _image_size(video_aspect),
     }
+    quality = _api_setting("ai_image_quality", "auto")
+    if quality:
+        payload["quality"] = quality
     response = requests.post(
         _endpoint("ai_image_generation_path", "/images/generations"),
         headers={**_headers(), "Content-Type": "application/json"},

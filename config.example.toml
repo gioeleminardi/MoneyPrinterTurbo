@@ -53,10 +53,20 @@ coverr_api_keys = []
 #   GET  /videos/{video_id}
 #   GET  /videos/{video_id}/content
 # Compatible providers can override the base URL, endpoint paths, and model names.
-# ai_media_api_key and ai_media_base_url fall back to openai_api_key/openai_base_url.
+# ai_media_api_key and ai_media_base_url fall back to the configured OpenAI or
+# AiHubMix credentials. For AiHubMix image generation, use for example:
+# ai_image_model_name = "gpt-image-2"
+# ai_image_size = "auto"
+# ai_image_quality = "auto"
 ai_media_api_key = ""
 ai_media_base_url = ""
 ai_image_model_name = "gpt-image-1"
+# Set ai_image_size = "auto" for providers such as AiHubMix that support it.
+# Leave it empty to use aspect-specific defaults: 1024x1536 for portrait,
+# 1536x1024 for landscape, and 1024x1024 for square.
+ai_image_size = ""
+# Set to an empty string to omit quality for providers that do not support it.
+ai_image_quality = "auto"
 ai_video_model_name = "sora-2"
 ai_image_generation_path = "/images/generations"
 ai_video_generation_path = "/videos"

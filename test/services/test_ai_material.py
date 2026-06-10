@@ -67,6 +67,53 @@ class TestAiMaterialService(unittest.TestCase):
                 post.call_args.args[0], "https://media.example/v1/images/generations"
             )
             self.assertEqual(post.call_args.kwargs["json"]["size"], "1536x1024")
+            self.assertEqual(post.call_args.kwargs["json"]["quality"], "auto")
+
+    def test_generate_image_supports_aihubmix_auto_size_and_quality(self):
+        config.app.update(
+            {
+                "ai_media_base_url": "https://aihubmix.com/v1",
+                "ai_image_model_name": "gpt-image-2",
+                "ai_image_size": "auto",
+                "ai_image_quality": "high",
+            }
+        )
+        response = Mock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "data": [{"b64_json": base64.b64encode(b"image-bytes").decode()}]
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = os.path.join(directory, "scene.png")
+            with patch.object(ai_material.requests, "post", return_value=response) as post:
+                ai_material.generate_image("prompt", output, VideoAspect.portrait)
+
+        self.assertEqual(post.call_args.args[0], "https://aihubmix.com/v1/images/generations")
+        self.assertEqual(
+            post.call_args.kwargs["json"],
+            {
+                "model": "gpt-image-2",
+                "prompt": "prompt",
+                "n": 1,
+                "size": "auto",
+                "quality": "high",
+            },
+        )
+
+    def test_aihubmix_llm_credentials_are_reused_for_media(self):
+        config.app.update(
+            {
+                "ai_media_api_key": "",
+                "ai_media_base_url": "",
+                "llm_provider": "aihubmix",
+                "aihubmix_api_key": "aihubmix-key",
+                "aihubmix_base_url": "https://aihubmix.com/v1",
+            }
+        )
+
+        self.assertEqual(ai_material._api_key(), "aihubmix-key")
+        self.assertEqual(ai_material._base_url(), "https://aihubmix.com/v1")
 
     def test_generate_videos_plans_enough_scenes_for_audio_duration(self):
         with tempfile.TemporaryDirectory() as directory:
