@@ -1,5 +1,5 @@
 [app]
-video_source = "pexels" # "pexels" or "pixabay"
+video_source = "pexels" # "pexels", "pixabay", "coverr", "ai", or "local"
 
 # 是否隐藏配置面板
 hide_config = false
@@ -41,6 +41,35 @@ pixabay_api_keys = []
 # For example: coverr_api_keys = ["123adsf4567adf89","abd1321cd13efgfdfhi"]
 # 特别注意格式，Key 用英文双引号括起来，多个Key用逗号隔开
 coverr_api_keys = []
+
+########## AI-generated video materials
+# The "ai" video source creates a coherent storyboard from the narration, generates
+# one image per scene, then animates each image. Generated MP4 clips enter the same
+# ffmpeg/MoviePy composition flow used by downloaded stock videos.
+#
+# Defaults follow the OpenAI-style media API contract:
+#   POST /images/generations
+#   POST /videos
+#   GET  /videos/{video_id}
+#   GET  /videos/{video_id}/content
+# Compatible providers can override the base URL, endpoint paths, and model names.
+# ai_media_api_key and ai_media_base_url fall back to openai_api_key/openai_base_url.
+ai_media_api_key = ""
+ai_media_base_url = ""
+ai_image_model_name = "gpt-image-1"
+ai_video_model_name = "sora-2"
+ai_image_generation_path = "/images/generations"
+ai_video_generation_path = "/videos"
+ai_video_status_path = "/videos/{video_id}"
+ai_video_content_path = "/videos/{video_id}/content"
+# Native OpenAI video generation currently accepts 4, 8, or 12 seconds. The
+# service selects the nearest duration at or above the requested clip duration;
+# the existing composition flow trims clips to the user's selected duration.
+ai_video_supported_durations = [4, 8, 12]
+ai_media_max_scenes = 20
+ai_media_request_timeout = 600
+ai_video_poll_interval = 10
+ai_video_poll_timeout = 1800
 
 # 支持的提供商 (Supported providers):
 #   openai

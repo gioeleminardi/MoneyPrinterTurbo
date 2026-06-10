@@ -8,7 +8,7 @@ from loguru import logger
 from app.config import config
 from app.models import const
 from app.models.schema import VideoConcatMode, VideoParams
-from app.services import llm, material, subtitle, video, voice, upload_post
+from app.services import ai_material, llm, material, subtitle, video, voice, upload_post
 from app.services import state as sm
 from app.utils import utils
 
@@ -163,7 +163,7 @@ def generate_subtitle(task_id, params, video_script, sub_maker, audio_file):
     return subtitle_path
 
 
-def get_video_materials(task_id, params, video_terms, audio_duration):
+def get_video_materials(task_id, params, video_script, video_terms, audio_duration):
     if params.video_source == "local":
         logger.info("\n\n## preprocess local materials")
         materials = video.preprocess_video(
@@ -176,6 +176,24 @@ def get_video_materials(task_id, params, video_terms, audio_duration):
             )
             return None
         return [material_info.url for material_info in materials]
+    elif params.video_source == "ai":
+        logger.info("\n\n## generating AI video materials")
+        try:
+            generated_videos = ai_material.generate_videos(
+                task_id=task_id,
+                video_subject=params.video_subject,
+                video_script=video_script,
+                audio_duration=audio_duration,
+                clip_duration=params.video_clip_duration,
+                video_aspect=params.video_aspect,
+            )
+        except Exception as exc:
+            logger.exception(f"failed to generate AI video materials: {str(exc)}")
+            generated_videos = []
+        if not generated_videos:
+            sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
+            return None
+        return generated_videos
     else:
         logger.info(f"\n\n## downloading videos from {params.video_source}")
         downloaded_videos = material.download_videos(
@@ -201,9 +219,14 @@ def generate_final_videos(
 ):
     final_video_paths = []
     combined_video_paths = []
-    video_concat_mode = (
-        params.video_concat_mode if params.video_count == 1 else VideoConcatMode.random
-    )
+    if params.video_source == "ai":
+        video_concat_mode = VideoConcatMode.sequential
+    else:
+        video_concat_mode = (
+            params.video_concat_mode
+            if params.video_count == 1
+            else VideoConcatMode.random
+        )
     video_transition_mode = params.video_transition_mode
 
     _progress = 50
@@ -267,7 +290,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 2. Generate terms
     video_terms = ""
-    if params.video_source != "local":
+    if params.video_source not in ["local", "ai"]:
         video_terms = generate_terms(task_id, params, video_script)
         if not video_terms:
             sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)
@@ -320,7 +343,7 @@ def start(task_id, params: VideoParams, stop_at: str = "video"):
 
     # 5. Get video materials
     downloaded_videos = get_video_materials(
-        task_id, params, video_terms, audio_duration
+        task_id, params, video_script, video_terms, audio_duration
     )
     if not downloaded_videos:
         sm.state.update_task(task_id, state=const.TASK_STATE_FAILED)

@@ -780,6 +780,7 @@ with middle_panel:
             (tr("Pexels"), "pexels"),
             (tr("Pixabay"), "pixabay"),
             (tr("Coverr"), "coverr"),
+            (tr("AI generated video"), "ai"),
             (tr("Local file"), "local"),
             (tr("TikTok"), "douyin"),
             (tr("Bilibili"), "bilibili"),
@@ -800,6 +801,28 @@ with middle_panel:
         params.video_source = video_sources[selected_index][1]
         config.app["video_source"] = params.video_source
 
+        if params.video_source == "ai":
+            with st.expander(tr("AI Media Settings"), expanded=True):
+                config.app["ai_media_api_key"] = st.text_input(
+                    tr("AI Media API Key"),
+                    value=config.app.get("ai_media_api_key", ""),
+                    type="password",
+                    help=tr("AI Media API Key Help"),
+                )
+                config.app["ai_media_base_url"] = st.text_input(
+                    tr("AI Media Base URL"),
+                    value=config.app.get("ai_media_base_url", ""),
+                    help=tr("AI Media Base URL Help"),
+                )
+                config.app["ai_image_model_name"] = st.text_input(
+                    tr("AI Image Model Name"),
+                    value=config.app.get("ai_image_model_name", "gpt-image-1"),
+                )
+                config.app["ai_video_model_name"] = st.text_input(
+                    tr("AI Video Model Name"),
+                    value=config.app.get("ai_video_model_name", "sora-2"),
+                )
+
         if params.video_source == "local":
             # Streamlit 的文件类型校验对扩展名大小写敏感，这里同时放行大小写两种形式。
             local_file_types = ["mp4", "mov", "avi", "flv", "mkv", "jpg", "jpeg", "png"]
@@ -811,7 +834,7 @@ with middle_panel:
 
         selected_index = st.selectbox(
             tr("Video Concat Mode"),
-            index=1,
+            index=0 if params.video_source == "ai" else 1,
             options=range(
                 len(video_concat_modes)
             ),  # Use the index as the internal option value
@@ -1408,7 +1431,7 @@ if start_button:
         scroll_to_bottom()
         st.stop()
 
-    if params.video_source not in ["pexels", "pixabay", "coverr", "local"]:
+    if params.video_source not in ["pexels", "pixabay", "coverr", "ai", "local"]:
         st.error(tr("Please Select a Valid Video Source"))
         scroll_to_bottom()
         st.stop()
@@ -1425,6 +1448,13 @@ if start_button:
 
     if params.video_source == "coverr" and not config.app.get("coverr_api_keys", ""):
         st.error(tr("Please Enter the Coverr API Key"))
+        scroll_to_bottom()
+        st.stop()
+
+    if params.video_source == "ai" and not (
+        config.app.get("ai_media_api_key", "") or config.app.get("openai_api_key", "")
+    ):
+        st.error(tr("Please Enter the AI Media API Key"))
         scroll_to_bottom()
         st.stop()
 
