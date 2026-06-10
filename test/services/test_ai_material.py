@@ -1,7 +1,9 @@
 import base64
 import os
 import tempfile
+import types
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from app.config import config
@@ -18,6 +20,13 @@ class TestAiMaterialService(unittest.TestCase):
             {
                 "ai_media_api_key": "test-key",
                 "ai_media_base_url": "https://media.example/v1",
+                "ai_image_model_name": "gpt-image-1",
+                "ai_image_size": "",
+                "ai_image_quality": "auto",
+                "ai_video_model_name": "sora-2",
+                "ai_video_include_seconds": True,
+                "ai_video_include_size": True,
+                "ai_video_include_input_reference": True,
                 "ai_video_poll_interval": 1,
             }
         )
@@ -47,15 +56,19 @@ class TestAiMaterialService(unittest.TestCase):
         )
 
     def test_generate_image_accepts_openai_base64_response(self):
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.json.return_value = {
-            "data": [{"b64_json": base64.b64encode(b"image-bytes").decode()}]
-        }
+        response = types.SimpleNamespace(
+            data=[
+                types.SimpleNamespace(
+                    b64_json=base64.b64encode(b"image-bytes").decode(), url=None
+                )
+            ]
+        )
+        client = Mock()
+        client.images.generate.return_value = response
 
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "scene.png")
-            with patch.object(ai_material.requests, "post", return_value=response) as post:
+            with patch.object(ai_material, "OpenAI", return_value=client) as openai:
                 result = ai_material.generate_image(
                     "cinematic library", output, VideoAspect.landscape
                 )
@@ -63,43 +76,57 @@ class TestAiMaterialService(unittest.TestCase):
             self.assertEqual(result, output)
             with open(output, "rb") as image_file:
                 self.assertEqual(image_file.read(), b"image-bytes")
-            self.assertEqual(
-                post.call_args.args[0], "https://media.example/v1/images/generations"
+            openai.assert_called_once_with(
+                api_key="test-key",
+                base_url="https://media.example/v1",
+                timeout=600.0,
             )
-            self.assertEqual(post.call_args.kwargs["json"]["size"], "1536x1024")
-            self.assertEqual(post.call_args.kwargs["json"]["quality"], "auto")
+            client.images.generate.assert_called_once_with(
+                model="gpt-image-1",
+                prompt="cinematic library",
+                n=1,
+                size="1536x1024",
+                quality="auto",
+            )
+            client.close.assert_called_once()
 
     def test_generate_image_supports_aihubmix_auto_size_and_quality(self):
         config.app.update(
             {
                 "ai_media_base_url": "https://aihubmix.com/v1",
-                "ai_image_model_name": "gpt-image-2",
+                "ai_image_model_name": "gpt-image-2-free",
                 "ai_image_size": "auto",
                 "ai_image_quality": "high",
             }
         )
-        response = Mock()
-        response.raise_for_status.return_value = None
-        response.json.return_value = {
-            "data": [{"b64_json": base64.b64encode(b"image-bytes").decode()}]
-        }
+        response = types.SimpleNamespace(
+            data=[
+                types.SimpleNamespace(
+                    b64_json=base64.b64encode(b"image-bytes").decode(), url=None
+                )
+            ]
+        )
+        client = Mock()
+        client.images.generate.return_value = response
 
         with tempfile.TemporaryDirectory() as directory:
             output = os.path.join(directory, "scene.png")
-            with patch.object(ai_material.requests, "post", return_value=response) as post:
+            with patch.object(ai_material, "OpenAI", return_value=client) as openai:
                 ai_material.generate_image("prompt", output, VideoAspect.portrait)
 
-        self.assertEqual(post.call_args.args[0], "https://aihubmix.com/v1/images/generations")
-        self.assertEqual(
-            post.call_args.kwargs["json"],
-            {
-                "model": "gpt-image-2",
-                "prompt": "prompt",
-                "n": 1,
-                "size": "auto",
-                "quality": "high",
-            },
+        openai.assert_called_once_with(
+            api_key="test-key",
+            base_url="https://aihubmix.com/v1",
+            timeout=600.0,
         )
+        client.images.generate.assert_called_once_with(
+            model="gpt-image-2-free",
+            prompt="prompt",
+            n=1,
+            size="auto",
+            quality="high",
+        )
+        client.close.assert_called_once()
 
     def test_aihubmix_llm_credentials_are_reused_for_media(self):
         config.app.update(
@@ -153,15 +180,23 @@ class TestAiMaterialService(unittest.TestCase):
         self.assertEqual(ai_material._video_duration(10), 12)
 
     def test_generate_video_uses_openai_create_poll_and_content_contract(self):
-        create_response = Mock()
-        create_response.raise_for_status.return_value = None
-        create_response.json.return_value = {"id": "video-123", "status": "queued"}
-        status_response = Mock()
-        status_response.raise_for_status.return_value = None
-        status_response.json.return_value = {"id": "video-123", "status": "completed"}
-        content_response = Mock()
-        content_response.raise_for_status.return_value = None
-        content_response.content = b"video-bytes"
+        queued_video = types.SimpleNamespace(
+            id="video-123", status="queued", progress=0, error=None
+        )
+        completed_video = types.SimpleNamespace(
+            id="video-123", status="completed", progress=100, error=None
+        )
+
+        def write_video(path):
+            with open(path, "wb") as video_file:
+                video_file.write(b"video-bytes")
+
+        content = Mock()
+        content.write_to_file.side_effect = write_video
+        client = Mock()
+        client.videos.create.return_value = queued_video
+        client.videos.retrieve.return_value = completed_video
+        client.videos.download_content.return_value = content
 
         with tempfile.TemporaryDirectory() as directory:
             image_path = os.path.join(directory, "scene.png")
@@ -171,13 +206,9 @@ class TestAiMaterialService(unittest.TestCase):
 
             clip = Mock(duration=4, fps=30)
             with (
-                patch.object(ai_material.requests, "post", return_value=create_response) as post,
-                patch.object(
-                    ai_material.requests,
-                    "get",
-                    side_effect=[status_response, content_response],
-                ) as get,
+                patch.object(ai_material, "OpenAI", return_value=client) as openai,
                 patch.object(ai_material, "VideoFileClip", return_value=clip),
+                patch.object(ai_material.time, "sleep"),
             ):
                 result = ai_material.generate_video(
                     image_path=image_path,
@@ -188,16 +219,81 @@ class TestAiMaterialService(unittest.TestCase):
                 )
 
         self.assertEqual(result, output_path)
-        self.assertEqual(post.call_args.args[0], "https://media.example/v1/videos")
-        self.assertEqual(post.call_args.kwargs["data"]["seconds"], "8")
-        self.assertEqual(
-            get.call_args_list[0].args[0], "https://media.example/v1/videos/video-123"
+        openai.assert_called_once_with(
+            api_key="test-key",
+            base_url="https://media.example/v1",
+            timeout=600.0,
         )
-        self.assertEqual(
-            get.call_args_list[1].args[0],
-            "https://media.example/v1/videos/video-123/content",
+        client.videos.create.assert_called_once_with(
+            model="sora-2",
+            prompt="slow dolly in",
+            seconds="8",
+            size="720x1280",
+            input_reference=Path(image_path),
         )
+        client.videos.retrieve.assert_called_once_with("video-123")
+        client.videos.download_content.assert_called_once_with("video-123")
+        content.write_to_file.assert_called_once_with(output_path)
+        client.close.assert_called_once()
         clip.close.assert_called_once()
+
+    def test_generate_video_supports_aihubmix_veo_request_shape(self):
+        config.app.update(
+            {
+                "ai_video_model_name": "veo-3.1-fast-generate-preview",
+                "ai_video_include_input_reference": True,
+            }
+        )
+        config.app.pop("ai_video_include_seconds", None)
+        config.app.pop("ai_video_include_size", None)
+        queued_video = types.SimpleNamespace(
+            id="veo-123", status="queued", progress=0, error=None
+        )
+        completed_video = types.SimpleNamespace(
+            id="veo-123", status="completed", progress=100, error=None
+        )
+        client = Mock()
+        client.videos.create.return_value = queued_video
+        client.videos.retrieve.return_value = completed_video
+
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = os.path.join(directory, "scene.png")
+            output_path = os.path.join(directory, "scene.mp4")
+            with open(image_path, "wb") as image_file:
+                image_file.write(b"image")
+
+            with (
+                patch.object(ai_material, "OpenAI", return_value=client),
+                patch.object(
+                    ai_material, "_download_video", return_value=output_path
+                ) as download,
+                patch.object(ai_material.time, "sleep"),
+            ):
+                result = ai_material.generate_video(
+                    image_path=image_path,
+                    motion_prompt="animate this image",
+                    output_path=output_path,
+                    duration=5,
+                    video_aspect=VideoAspect.portrait,
+                )
+
+        self.assertEqual(result, output_path)
+        client.videos.create.assert_called_once_with(
+            model="veo-3.1-fast-generate-preview",
+            prompt="animate this image",
+            input_reference=Path(image_path),
+        )
+        client.videos.retrieve.assert_called_once_with("veo-123")
+        download.assert_called_once_with(client, "veo-123", output_path)
+        client.close.assert_called_once()
+
+    def test_video_error_extracts_nested_message(self):
+        self.assertEqual(
+            ai_material._video_error(
+                {"status": "failed", "error": {"message": "generation rejected"}}
+            ),
+            "generation rejected",
+        )
 
 
 class TestAiMaterialTaskIntegration(unittest.TestCase):

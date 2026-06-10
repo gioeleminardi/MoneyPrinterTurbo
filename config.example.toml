@@ -52,10 +52,11 @@ coverr_api_keys = []
 #   POST /videos
 #   GET  /videos/{video_id}
 #   GET  /videos/{video_id}/content
-# Compatible providers can override the base URL, endpoint paths, and model names.
+# Compatible providers can override the base URL and model names. Image and video
+# generation use the OpenAI SDK's images and videos APIs.
 # ai_media_api_key and ai_media_base_url fall back to the configured OpenAI or
 # AiHubMix credentials. For AiHubMix image generation, use for example:
-# ai_image_model_name = "gpt-image-2"
+# ai_image_model_name = "gpt-image-2-free"
 # ai_image_size = "auto"
 # ai_image_quality = "auto"
 ai_media_api_key = ""
@@ -68,10 +69,16 @@ ai_image_size = ""
 # Set to an empty string to omit quality for providers that do not support it.
 ai_image_quality = "auto"
 ai_video_model_name = "sora-2"
-ai_image_generation_path = "/images/generations"
-ai_video_generation_path = "/videos"
-ai_video_status_path = "/videos/{video_id}"
-ai_video_content_path = "/videos/{video_id}/content"
+# Some video models do not accept seconds or size. For AiHubMix Veo, use:
+# ai_video_model_name = "veo-3.1-fast-generate-preview"
+# ai_video_include_seconds = false
+# ai_video_include_size = false
+# Keep input_reference enabled for this image-to-video flow.
+# When these settings are omitted, veo-* models omit seconds/size automatically
+# and other models include them. Uncomment either value to override detection.
+# ai_video_include_seconds = true
+# ai_video_include_size = true
+ai_video_include_input_reference = true
 # Native OpenAI video generation currently accepts 4, 8, or 12 seconds. The
 # service selects the nearest duration at or above the requested clip duration;
 # the existing composition flow trims clips to the user's selected duration.

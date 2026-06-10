@@ -827,9 +827,31 @@ with middle_panel:
                     tr("AI Image Quality"),
                     value=config.app.get("ai_image_quality", "auto"),
                 )
-                config.app["ai_video_model_name"] = st.text_input(
+                ai_video_model_name = st.text_input(
                     tr("AI Video Model Name"),
                     value=config.app.get("ai_video_model_name", "sora-2"),
+                )
+                config.app["ai_video_model_name"] = ai_video_model_name
+                include_video_optional_params = not ai_video_model_name.lower().startswith(
+                    "veo-"
+                )
+                config.app["ai_video_include_seconds"] = st.checkbox(
+                    tr("AI Video Include Seconds"),
+                    value=config.app.get(
+                        "ai_video_include_seconds", include_video_optional_params
+                    ),
+                    help=tr("AI Video Optional Parameters Help"),
+                )
+                config.app["ai_video_include_size"] = st.checkbox(
+                    tr("AI Video Include Size"),
+                    value=config.app.get(
+                        "ai_video_include_size", include_video_optional_params
+                    ),
+                    help=tr("AI Video Optional Parameters Help"),
+                )
+                config.app["ai_video_include_input_reference"] = st.checkbox(
+                    tr("AI Video Include Input Reference"),
+                    value=config.app.get("ai_video_include_input_reference", True),
                 )
 
         if params.video_source == "local":

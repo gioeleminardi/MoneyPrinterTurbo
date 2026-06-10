@@ -5,6 +5,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
+from openai import OpenAI
 
 import requests
 from loguru import logger
@@ -20,6 +21,13 @@ from app.utils import utils
 def _api_setting(name: str, fallback: str = "") -> str:
     value = config.app.get(name, fallback)
     return str(value).strip() if value is not None else ""
+
+
+def _api_bool(name: str, fallback: bool = False) -> bool:
+    value = config.app.get(name, fallback)
+    if isinstance(value, str):
+        return value.strip().lower() not in {"0", "false", "no", "off", ""}
+    return bool(value)
 
 
 def _fallback_media_provider() -> str:
@@ -59,21 +67,10 @@ def _base_url() -> str:
     return base_url.rstrip("/")
 
 
-def _endpoint(path_setting: str, default_path: str, **values) -> str:
-    path = _api_setting(path_setting, default_path).format(**values)
-    return f"{_base_url()}/{path.lstrip('/')}"
-
-
-def _headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {_api_key()}"}
-
-
-def _response_json(response: requests.Response) -> dict[str, Any]:
-    response.raise_for_status()
-    payload = response.json()
-    if not isinstance(payload, dict):
-        raise ValueError("AI media provider returned a non-object JSON response")
-    return payload
+def _response_field(value: Any, name: str) -> Any:
+    if isinstance(value, dict):
+        return value.get(name)
+    return getattr(value, name, None)
 
 
 def _extract_json_array(response: str) -> list[dict[str, str]]:
@@ -84,7 +81,7 @@ def _extract_json_array(response: str) -> list[dict[str, str]]:
         end = response.rfind("]")
         if start < 0 or end <= start:
             raise ValueError("scene planner did not return a JSON array")
-        value = json.loads(response[start : end + 1])
+        value = json.loads(response[start: end + 1])
 
     if not isinstance(value, list):
         raise ValueError("scene planner response is not a JSON array")
@@ -100,7 +97,7 @@ def _extract_json_array(response: str) -> list[dict[str, str]]:
                 {
                     "image_prompt": image_prompt,
                     "motion_prompt": motion_prompt
-                    or "Subtle natural cinematic camera movement.",
+                                     or "Subtle natural cinematic camera movement.",
                 }
             )
     if not scenes:
@@ -109,10 +106,10 @@ def _extract_json_array(response: str) -> list[dict[str, str]]:
 
 
 def generate_scene_plan(
-    video_subject: str,
-    video_script: str,
-    scene_count: int,
-    video_aspect: VideoAspect,
+        video_subject: str,
+        video_script: str,
+        scene_count: int,
+        video_aspect: VideoAspect,
 ) -> list[dict[str, str]]:
     prompt = f"""
 # Role: Storyboard planner for an image-to-video production
@@ -152,7 +149,7 @@ def _image_size(video_aspect: VideoAspect) -> str:
 
 
 def generate_image(prompt: str, output_path: str, video_aspect: VideoAspect) -> str:
-    payload = {
+    generate_args = {
         "model": _api_setting("ai_image_model_name", "gpt-image-1"),
         "prompt": prompt,
         "n": 1,
@@ -160,25 +157,30 @@ def generate_image(prompt: str, output_path: str, video_aspect: VideoAspect) -> 
     }
     quality = _api_setting("ai_image_quality", "auto")
     if quality:
-        payload["quality"] = quality
-    response = requests.post(
-        _endpoint("ai_image_generation_path", "/images/generations"),
-        headers={**_headers(), "Content-Type": "application/json"},
-        json=payload,
-        proxies=config.proxy,
-        verify=_get_tls_verify(),
-        timeout=(30, int(config.app.get("ai_media_request_timeout", 600))),
+        generate_args["quality"] = quality
+
+    client = OpenAI(
+        api_key=_api_key(),
+        base_url=_base_url(),
+        timeout=float(config.app.get("ai_media_request_timeout", 600)),
     )
-    data = _response_json(response).get("data") or []
-    if not data or not isinstance(data[0], dict):
+    try:
+        response = client.images.generate(**generate_args)
+    finally:
+        client.close()
+
+    data = _response_field(response, "data") or []
+    if not data:
         raise ValueError("image provider returned no image")
 
     image = data[0]
-    if image.get("b64_json"):
-        content = base64.b64decode(image["b64_json"])
-    elif image.get("url"):
+    b64_json = _response_field(image, "b64_json")
+    image_url = _response_field(image, "url")
+    if b64_json:
+        content = base64.b64decode(b64_json)
+    elif image_url:
         download = requests.get(
-            image["url"],
+            image_url,
             proxies=config.proxy,
             verify=_get_tls_verify(),
             timeout=(30, int(config.app.get("ai_media_request_timeout", 600))),
@@ -223,24 +225,42 @@ def _video_duration(requested_duration: int) -> int:
     )
 
 
-def _video_id(payload: dict[str, Any]) -> str:
-    return str(payload.get("id") or payload.get("video_id") or "").strip()
+def _video_model_name() -> str:
+    return _api_setting("ai_video_model_name", "sora-2")
 
 
-def _video_status(payload: dict[str, Any]) -> str:
-    return str(payload.get("status") or payload.get("state") or "").lower().strip()
+def _video_optional_parameter(name: str) -> bool:
+    if name in config.app:
+        return _api_bool(name)
+    return not _video_model_name().lower().startswith("veo-")
 
 
-def _download_video(video_id: str, output_path: str) -> str:
-    response = requests.get(
-        _endpoint("ai_video_content_path", "/videos/{video_id}/content", video_id=video_id),
-        headers=_headers(),
-        proxies=config.proxy,
-        verify=_get_tls_verify(),
-        timeout=(30, int(config.app.get("ai_media_request_timeout", 600))),
+def _video_id(payload: Any) -> str:
+    return str(
+        _response_field(payload, "id") or _response_field(payload, "video_id") or ""
+    ).strip()
+
+
+def _video_status(payload: Any) -> str:
+    return str(
+        _response_field(payload, "status") or _response_field(payload, "state") or ""
+    ).lower().strip()
+
+
+def _video_error(payload: Any) -> str:
+    error = _response_field(payload, "error")
+    return str(
+        _response_field(error, "message")
+        or _response_field(error, "code")
+        or error
+        or _response_field(payload, "message")
+        or _video_status(payload)
     )
-    response.raise_for_status()
-    Path(output_path).write_bytes(response.content)
+
+
+def _download_video(client: OpenAI, video_id: str, output_path: str) -> str:
+    content = client.videos.download_content(video_id)
+    content.write_to_file(output_path)
 
     clip = None
     try:
@@ -254,62 +274,66 @@ def _download_video(video_id: str, output_path: str) -> str:
 
 
 def generate_video(
-    image_path: str,
-    motion_prompt: str,
-    output_path: str,
-    duration: int,
-    video_aspect: VideoAspect,
+        image_path: str,
+        motion_prompt: str,
+        output_path: str,
+        duration: int,
+        video_aspect: VideoAspect,
 ) -> str:
-    with open(image_path, "rb") as image_file:
-        response = requests.post(
-            _endpoint("ai_video_generation_path", "/videos"),
-            headers=_headers(),
-            data={
-                "model": _api_setting("ai_video_model_name", "sora-2"),
-                "prompt": motion_prompt,
-                "seconds": str(_video_duration(duration)),
-                "size": _video_size(video_aspect),
-            },
-            files={"input_reference": (os.path.basename(image_path), image_file, "image/png")},
-            proxies=config.proxy,
-            verify=_get_tls_verify(),
-            timeout=(30, int(config.app.get("ai_media_request_timeout", 600))),
-        )
-    video_id = _video_id(_response_json(response))
-    if not video_id:
-        raise ValueError("video provider returned no video id")
+    create_args = {
+        "model": _video_model_name(),
+        "prompt": motion_prompt,
+    }
+    if _video_optional_parameter("ai_video_include_seconds"):
+        create_args["seconds"] = str(_video_duration(duration))
+    if _video_optional_parameter("ai_video_include_size"):
+        create_args["size"] = _video_size(video_aspect)
+    if _api_bool("ai_video_include_input_reference", True):
+        create_args["input_reference"] = Path(image_path)
 
-    poll_interval = max(1, int(config.app.get("ai_video_poll_interval", 10)))
-    poll_timeout = max(poll_interval, int(config.app.get("ai_video_poll_timeout", 1800)))
-    deadline = time.monotonic() + poll_timeout
-    while time.monotonic() < deadline:
-        status_payload = _response_json(
-            requests.get(
-                _endpoint("ai_video_status_path", "/videos/{video_id}", video_id=video_id),
-                headers=_headers(),
-                proxies=config.proxy,
-                verify=_get_tls_verify(),
-                timeout=(30, int(config.app.get("ai_media_request_timeout", 600))),
-            )
-        )
-        status = _video_status(status_payload)
-        if status in {"completed", "succeeded", "success", "ready"}:
-            return _download_video(video_id, output_path)
-        if status in {"failed", "cancelled", "canceled", "expired"}:
-            error = status_payload.get("error") or status_payload.get("message") or status
-            raise ValueError(f"video generation failed: {error}")
-        time.sleep(poll_interval)
+    client = OpenAI(
+        api_key=_api_key(),
+        base_url=_base_url(),
+        timeout=float(config.app.get("ai_media_request_timeout", 600)),
+    )
+    try:
+        video = client.videos.create(**create_args)
+        video_id = _video_id(video)
+        if not video_id:
+            raise ValueError("video provider returned no video id")
 
-    raise TimeoutError(f"video generation timed out after {poll_timeout} seconds")
+        poll_interval = max(1, int(config.app.get("ai_video_poll_interval", 10)))
+        poll_timeout = max(
+            poll_interval, int(config.app.get("ai_video_poll_timeout", 1800))
+        )
+        deadline = time.monotonic() + poll_timeout
+        while time.monotonic() < deadline:
+            status = _video_status(video)
+            progress = _response_field(video, "progress") or 0
+            logger.info(f"AI video {video_id}: status={status}, progress={progress}%")
+            if status in {"completed", "succeeded", "success", "ready"}:
+                return _download_video(client, video_id, output_path)
+            if status in {"failed", "cancelled", "canceled", "expired"}:
+                raise ValueError(f"video generation failed: {_video_error(video)}")
+
+            try:
+                video = client.videos.retrieve(video_id)
+            except Exception as exc:
+                logger.warning(f"failed to retrieve video {video_id} status: {str(exc)}")
+            time.sleep(poll_interval)
+
+        raise TimeoutError(f"video generation timed out after {poll_timeout} seconds")
+    finally:
+        client.close()
 
 
 def generate_videos(
-    task_id: str,
-    video_subject: str,
-    video_script: str,
-    audio_duration: float,
-    clip_duration: int,
-    video_aspect: VideoAspect,
+        task_id: str,
+        video_subject: str,
+        video_script: str,
+        audio_duration: float,
+        clip_duration: int,
+        video_aspect: VideoAspect,
 ) -> list[str]:
     max_scenes = max(1, int(config.app.get("ai_media_max_scenes", 20)))
     scene_count = min(max_scenes, max(1, math.ceil(audio_duration / clip_duration)))
