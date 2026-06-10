@@ -76,10 +76,13 @@ ai_video_model_name = "sora-2"
 # Keep input_reference enabled for image-to-video. Set it to false to skip image
 # generation and send both the scene image prompt and motion prompt directly to
 # the video model.
-# When these settings are omitted, veo-* models omit seconds/size automatically
-# and other models include them. Uncomment either value to override detection.
+# veo-* models always omit seconds/size because AiHubMix's Veo-compatible API
+# selects a valid duration/resolution combination itself. Other models include
+# them by default; uncomment either value to override those models.
 # ai_video_include_seconds = true
 # ai_video_include_size = true
+# If a provider rejects a duration/resolution combination, generation retries
+# once without seconds and size so the model can use its compatible defaults.
 ai_video_include_input_reference = true
 # Native OpenAI video generation currently accepts 4, 8, or 12 seconds. The
 # service selects the nearest duration at or above the requested clip duration;

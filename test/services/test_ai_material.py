@@ -366,6 +366,64 @@ class TestAiMaterialService(unittest.TestCase):
             ),
         )
 
+    def test_generate_video_retries_without_incompatible_duration_and_size(self):
+        config.app.update(
+            {
+                "ai_video_model_name": "custom-video-model",
+                "ai_video_include_input_reference": False,
+                "ai_video_include_seconds": True,
+                "ai_video_include_size": True,
+            }
+        )
+
+        compatibility_error = Exception(
+            "1080p is not supported for a duration of 4 seconds."
+        )
+        compatibility_error.status_code = 400
+        completed_video = types.SimpleNamespace(
+            id="video-123", status="completed", progress=100, error=None
+        )
+        client = Mock()
+        client.videos.create.side_effect = [compatibility_error, completed_video]
+
+        with (
+            patch.object(ai_material, "OpenAI", return_value=client),
+            patch.object(ai_material, "_download_video", return_value="output.mp4"),
+        ):
+            result = ai_material.generate_video(
+                image_path=None,
+                image_prompt="A red sailboat crossing a stormy ocean.",
+                motion_prompt="Track beside the boat.",
+                output_path="output.mp4",
+                duration=4,
+                video_aspect=VideoAspect.portrait,
+            )
+
+        self.assertEqual(result, "output.mp4")
+        self.assertEqual(client.videos.create.call_count, 2)
+        first_call = client.videos.create.call_args_list[0].kwargs
+        second_call = client.videos.create.call_args_list[1].kwargs
+        self.assertEqual(first_call["seconds"], "4")
+        self.assertEqual(first_call["size"], "720x1280")
+        self.assertNotIn("seconds", second_call)
+        self.assertNotIn("size", second_call)
+        self.assertEqual(second_call["model"], "custom-video-model")
+        self.assertEqual(second_call["prompt"], first_call["prompt"])
+
+    def test_veo_models_omit_duration_and_size_despite_stale_enabled_settings(self):
+        config.app.update(
+            {
+                "ai_video_model_name": "veo-3.1-lite-generate-preview",
+                "ai_video_include_seconds": True,
+                "ai_video_include_size": True,
+            }
+        )
+
+        self.assertFalse(
+            ai_material._video_optional_parameter("ai_video_include_seconds")
+        )
+        self.assertFalse(ai_material._video_optional_parameter("ai_video_include_size"))
+
     def test_video_error_extracts_nested_message(self):
         self.assertEqual(
             ai_material._video_error(

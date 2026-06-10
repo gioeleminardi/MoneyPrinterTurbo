@@ -230,9 +230,11 @@ def _video_model_name() -> str:
 
 
 def _video_optional_parameter(name: str) -> bool:
+    if _video_model_name().lower().startswith("veo-"):
+        return False
     if name in config.app:
         return _api_bool(name)
-    return not _video_model_name().lower().startswith("veo-")
+    return True
 
 
 def _video_id(payload: Any) -> str:
@@ -256,6 +258,33 @@ def _video_error(payload: Any) -> str:
         or _response_field(payload, "message")
         or _video_status(payload)
     )
+
+
+def _is_video_parameter_compatibility_error(exc: Exception) -> bool:
+    status_code = getattr(exc, "status_code", None)
+    message = str(exc).lower()
+    parameter_terms = ("duration", "seconds", "resolution", "1080p", "720p", "size")
+    return status_code == 400 and any(term in message for term in parameter_terms)
+
+
+def _create_video_with_compatibility_fallback(client: OpenAI, create_args: dict) -> Any:
+    try:
+        return client.videos.create(**create_args)
+    except Exception as exc:
+        has_optional_parameters = "seconds" in create_args or "size" in create_args
+        if not has_optional_parameters or not _is_video_parameter_compatibility_error(exc):
+            raise
+
+        fallback_args = {
+            key: value
+            for key, value in create_args.items()
+            if key not in {"seconds", "size"}
+        }
+        logger.warning(
+            "video provider rejected the requested duration/size combination; "
+            "retrying without seconds and size"
+        )
+        return client.videos.create(**fallback_args)
 
 
 def _download_video(client: OpenAI, video_id: str, output_path: str) -> str:
@@ -312,7 +341,7 @@ def generate_video(
         timeout=float(config.app.get("ai_media_request_timeout", 600)),
     )
     try:
-        video = client.videos.create(**create_args)
+        video = _create_video_with_compatibility_fallback(client, create_args)
         video_id = _video_id(video)
         if not video_id:
             raise ValueError("video provider returned no video id")
