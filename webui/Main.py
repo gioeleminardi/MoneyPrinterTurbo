@@ -852,6 +852,7 @@ with middle_panel:
                 config.app["ai_video_include_input_reference"] = st.checkbox(
                     tr("AI Video Include Input Reference"),
                     value=config.app.get("ai_video_include_input_reference", True),
+                    help=tr("AI Video Input Reference Help"),
                 )
 
         if params.video_source == "local":

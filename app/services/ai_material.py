@@ -273,22 +273,37 @@ def _download_video(client: OpenAI, video_id: str, output_path: str) -> str:
     return output_path
 
 
+def _video_prompt(image_prompt: str, motion_prompt: str, include_reference: bool) -> str:
+    if include_reference:
+        return motion_prompt
+    return (
+        "Visual scene:\n"
+        f"{image_prompt}\n\n"
+        "Motion and camera direction:\n"
+        f"{motion_prompt}"
+    )
+
+
 def generate_video(
-        image_path: str,
+        image_path: str | None,
+        image_prompt: str,
         motion_prompt: str,
         output_path: str,
         duration: int,
         video_aspect: VideoAspect,
 ) -> str:
+    include_reference = _api_bool("ai_video_include_input_reference", True)
     create_args = {
         "model": _video_model_name(),
-        "prompt": motion_prompt,
+        "prompt": _video_prompt(image_prompt, motion_prompt, include_reference),
     }
     if _video_optional_parameter("ai_video_include_seconds"):
         create_args["seconds"] = str(_video_duration(duration))
     if _video_optional_parameter("ai_video_include_size"):
         create_args["size"] = _video_size(video_aspect)
-    if _api_bool("ai_video_include_input_reference", True):
+    if include_reference:
+        if not image_path:
+            raise ValueError("image_path is required when input_reference is enabled")
         create_args["input_reference"] = Path(image_path)
 
     client = OpenAI(
@@ -351,15 +366,25 @@ def generate_videos(
     )
 
     videos = []
+    include_reference = _api_bool("ai_video_include_input_reference", True)
     for index, scene in enumerate(scenes, start=1):
-        logger.info(f"generating AI image {index}/{len(scenes)}")
-        image_path = generate_image(
-            scene["image_prompt"], str(output_dir / f"scene-{index:03d}.png"), video_aspect
-        )
+        image_path = None
+        if include_reference:
+            logger.info(f"generating AI image {index}/{len(scenes)}")
+            image_path = generate_image(
+                scene["image_prompt"],
+                str(output_dir / f"scene-{index:03d}.png"),
+                video_aspect,
+            )
+        else:
+            logger.info(
+                f"skipping AI image {index}/{len(scenes)}; using direct text-to-video"
+            )
         logger.info(f"generating AI video {index}/{len(scenes)}")
         videos.append(
             generate_video(
                 image_path=image_path,
+                image_prompt=scene["image_prompt"],
                 motion_prompt=scene["motion_prompt"],
                 output_path=str(output_dir / f"scene-{index:03d}.mp4"),
                 duration=clip_duration,

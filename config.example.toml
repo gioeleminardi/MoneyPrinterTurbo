@@ -73,7 +73,9 @@ ai_video_model_name = "sora-2"
 # ai_video_model_name = "veo-3.1-fast-generate-preview"
 # ai_video_include_seconds = false
 # ai_video_include_size = false
-# Keep input_reference enabled for this image-to-video flow.
+# Keep input_reference enabled for image-to-video. Set it to false to skip image
+# generation and send both the scene image prompt and motion prompt directly to
+# the video model.
 # When these settings are omitted, veo-* models omit seconds/size automatically
 # and other models include them. Uncomment either value to override detection.
 # ai_video_include_seconds = true

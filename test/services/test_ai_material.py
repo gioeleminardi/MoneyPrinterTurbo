@@ -212,6 +212,7 @@ class TestAiMaterialService(unittest.TestCase):
             ):
                 result = ai_material.generate_video(
                     image_path=image_path,
+                    image_prompt="a cinematic library",
                     motion_prompt="slow dolly in",
                     output_path=output_path,
                     duration=5,
@@ -271,6 +272,7 @@ class TestAiMaterialService(unittest.TestCase):
             ):
                 result = ai_material.generate_video(
                     image_path=image_path,
+                    image_prompt="a dog riding a motorcycle",
                     motion_prompt="animate this image",
                     output_path=output_path,
                     duration=5,
@@ -286,6 +288,83 @@ class TestAiMaterialService(unittest.TestCase):
         client.videos.retrieve.assert_called_once_with("veo-123")
         download.assert_called_once_with(client, "veo-123", output_path)
         client.close.assert_called_once()
+
+    def test_generate_videos_skips_images_for_direct_text_to_video(self):
+        config.app["ai_video_include_input_reference"] = False
+        scene = {
+            "image_prompt": "A red sailboat crossing a stormy ocean.",
+            "motion_prompt": "Waves surge as the camera tracks beside the boat.",
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            with (
+                patch.object(ai_material.utils, "task_dir", return_value=directory),
+                patch.object(ai_material, "generate_scene_plan", return_value=[scene]),
+                patch.object(ai_material, "generate_image") as generate_image,
+                patch.object(
+                    ai_material,
+                    "generate_video",
+                    return_value=os.path.join(directory, "scene-001.mp4"),
+                ) as generate_video,
+            ):
+                videos = ai_material.generate_videos(
+                    task_id="task",
+                    video_subject="Sailing",
+                    video_script="A boat crosses the ocean.",
+                    audio_duration=4,
+                    clip_duration=4,
+                    video_aspect=VideoAspect.landscape,
+                )
+
+        generate_image.assert_not_called()
+        expected_video = os.path.join(directory, "ai-materials", "scene-001.mp4")
+        generate_video.assert_called_once_with(
+            image_path=None,
+            image_prompt=scene["image_prompt"],
+            motion_prompt=scene["motion_prompt"],
+            output_path=expected_video,
+            duration=4,
+            video_aspect=VideoAspect.landscape,
+        )
+        self.assertEqual(videos, [os.path.join(directory, "scene-001.mp4")])
+
+    def test_generate_video_combines_prompts_without_input_reference(self):
+        config.app.update(
+            {
+                "ai_video_include_input_reference": False,
+                "ai_video_include_seconds": False,
+                "ai_video_include_size": False,
+            }
+        )
+        completed_video = types.SimpleNamespace(
+            id="video-123", status="completed", progress=100, error=None
+        )
+        client = Mock()
+        client.videos.create.return_value = completed_video
+
+        with (
+            patch.object(ai_material, "OpenAI", return_value=client),
+            patch.object(ai_material, "_download_video", return_value="output.mp4"),
+        ):
+            result = ai_material.generate_video(
+                image_path=None,
+                image_prompt="A red sailboat crossing a stormy ocean.",
+                motion_prompt="Waves surge as the camera tracks beside the boat.",
+                output_path="output.mp4",
+                duration=5,
+                video_aspect=VideoAspect.landscape,
+            )
+
+        self.assertEqual(result, "output.mp4")
+        client.videos.create.assert_called_once_with(
+            model="sora-2",
+            prompt=(
+                "Visual scene:\n"
+                "A red sailboat crossing a stormy ocean.\n\n"
+                "Motion and camera direction:\n"
+                "Waves surge as the camera tracks beside the boat."
+            ),
+        )
 
     def test_video_error_extracts_nested_message(self):
         self.assertEqual(
